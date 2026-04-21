@@ -51,3 +51,11 @@ def calculate_entropy(y):
     return entropy
 
 print("\n ---Validation Initiation for entropy---")
+
+y_pure = np.array(['wood', 'wood', 'wood','wood'])
+entropy_pure = calculate_entropy(y_pure)
+print(f"1. Entropy of pure group: {entropy_pure:.4f}(Expected:~0.0)")
+
+y_mixed = np.array(['wood', 'wood', 'concrete', 'wood'])
+entropy_mixed = calculate_entropy(y_mixed)
+print(f"2. Entropy of 50/50 mixed group:{entropy_mixed:.4f}(Expected:~1.0)")
