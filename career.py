@@ -282,3 +282,64 @@ if my_first_tree.feature_idx == 1 and len(my_first_tree.children) == 3 and my_fi
     print("\n✅ SUCCESS: The tree successfully grew recursively, respected the non-binary rule, and stopped correctly!")
 else:
     print("\n❌ ERROR: The tree did not build correctly.")
+
+def predict_single(node, row):
+    #обходит дерево в поисках одной строки данных, пока не дойдёт до конечного узла
+        if node.value is not None:
+            return node.value
+        
+        feature_val = row[node.feature_idx]
+
+        # We use the saved 'edges' to find which branch we should take.
+          # np.digitize tells us exactly the index of the child branch.
+        # Note: [1:-1] ignores the 0% and 100% boundaries, just like we did during training.
+        branch_index = np.digitize([feature_val], node.edges[1:-1])[0]
+    
+        # Safety mechanism: ensure the index doesn't go out of bounds 
+        # (just in case new data is extremely larger or smaller than training data)
+        branch_index = np.clip(branch_index, 0, len(node.children) - 1)
+    
+        # RECURSION: Go deeper into the tree using the chosen child node
+        return predict_single(node.children[branch_index], row)
+    
+    # 2. Function to predict a whole dataset / Функция предсказания для выборки
+def predict_batch(tree, X):
+    # What is it?: A helper function that applies predict_single to all rows in our matrix X.
+    # Why?: We need this to quickly calculate Accuracy later.
+    
+    predictions = []
+    for row in X:
+        pred = predict_single(tree, row)
+        predictions.append(pred)
+        
+    return np.array(predictions)
+        
+    # --- Validation Initiation for Stage 3.3 (Predictor) ---
+print("\n--- Validation Initiation for Tree Prediction ---")
+
+# We use the dummy data and the 'my_first_tree' we just built in the previous step
+X_val = np.array([
+    [0.1, 10], [0.9, 15],  # Real classes: 'wood'
+    [0.2, 50], [0.8, 55],  # Real classes: 'concrete'
+    [0.5, 90], [0.6, 95]   # Real classes: 'carpet'
+])
+y_real = np.array(['wood', 'wood', 'concrete', 'concrete', 'carpet', 'carpet'])
+
+print("Executing predictions...")
+# We ask our tree to predict the whole dataset
+y_pred = predict_batch(my_first_tree, X_val)
+
+print(f"\nReal labels:      {y_real}")
+print(f"Predicted labels: {y_pred}")
+
+# Calculate a quick Accuracy
+correct_predictions = np.sum(y_real == y_pred)
+total_samples = len(y_real)
+accuracy = correct_predictions / total_samples
+
+print(f"\nTree Accuracy on Training Data: {accuracy * 100:.2f}%")
+
+if accuracy == 1.0:
+    print("✅ SUCCESS: The tree traversed perfectly and predicted all classes correctly!")
+else:
+    print("❌ ERROR: The prediction logic failed or the tree didn't memorize the pure classes.")
