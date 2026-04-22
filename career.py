@@ -343,3 +343,189 @@ if accuracy == 1.0:
     print("✅ SUCCESS: The tree traversed perfectly and predicted all classes correctly!")
 else:
     print("❌ ERROR: The prediction logic failed or the tree didn't memorize the pure classes.")
+
+#Ансамблевая модель, которая создает несколько деревьев С4.5 и управляет ими
+class CustomRandomForest:
+
+    def __init__(self, n_trees=10, max_depth=5, num_bins=3):
+        self.n_trees = n_trees #количество деревьев в лесу
+        self.max_depth = max_depth #stopping criteria to prevent overfitting
+        self.num_bins = num_bins 
+
+    def bootstrap_sample(self, X, y):
+        # Creates a random sample of the dataset with replacement (Bagging).
+        # So every tree learns from a slightly different perspective of the data.
+        n_samples = X.shape[0]
+
+        indices = np.random.choice(n_samples, size=n_samples, replace=True)
+        
+        return X[indices], y[indices]
+    
+    def fit(self, X, y):
+        # The training loop. Builds 'n_trees' independent trees.
+        self.trees = []
+        
+        for i in range(self.n_trees):
+            # 1. Get a unique mathematical sample for this tree
+            X_sample, y_sample = self.bootstrap_sample(X, y)
+            
+            # 2. Plant and grow the tree using our recursive C4.5 builder
+            tree = build_tree(X_sample, y_sample, self.max_depth,current_depth=0, num_bins=self.num_bins)
+            self.trees.append(tree)
+
+    def predict(self, X):
+        # What is it?: Asks all trees to predict and then holds an election (Majority Voting).
+        
+        # 1. Get predictions from EVERY tree. 
+        # Result shape: (number_of_trees, number_of_samples)
+        tree_predictions = np.array([predict_batch(tree, X) for tree in self.trees])
+        
+        # 2. Swap axes to group predictions by sample instead of by tree
+        # New shape: (number_of_samples, number_of_trees)
+        tree_predictions = np.swapaxes(tree_predictions, 0, 1)
+        
+        final_predictions = []
+    
+    # 3. Count the votes for each sample
+        for votes in tree_predictions:
+            classes, counts = np.unique(votes, return_counts=True)
+            winner_class = classes[np.argmax(counts)]
+            final_predictions.append(winner_class)
+            
+        return np.array(final_predictions)
+    
+    # --- Validation Initiation for Stage 4 (Random Forest) ---
+print("\n--- Validation Initiation for the Forest ---")
+
+# Dummy Data (6 samples)
+X_val = np.array([
+    [0.1, 10], [0.9, 15],  # 'wood' profile
+    [0.2, 50], [0.8, 55],  # 'concrete' profile
+    [0.5, 90], [0.6, 95]   # 'carpet' profile
+])
+y_val = np.array(['wood', 'wood', 'concrete', 'concrete', 'carpet', 'carpet'])
+
+print("Initializing the Random Forest...")
+# We create a forest with 5 trees, max depth 2, and 3 branches per node
+my_forest = CustomRandomForest(n_trees=5, max_depth=2, num_bins=3)
+
+print("Training the ensemble (Bagging in progress)...")
+my_forest.fit(X_val, y_val)
+
+print("Holding the election (Predicting)...")
+forest_predictions = my_forest.predict(X_val)
+
+print(f"Real labels:   {y_val}")
+print(f"Forest labels: {forest_predictions}")
+
+# Check if the forest was successfully populated
+trees_created = len(my_forest.trees)
+
+if trees_created == 5 and len(forest_predictions) == len(y_val):
+    print(f"\n✅ SUCCESS: The Random Forest created {trees_created} non-binary trees and voted successfully!")
+else:
+    print("\n❌ ERROR: The ensemble failed to build or predict.")
+
+#Test SPlitter / ручное разделение выборки
+
+def train_test_split_manual(X, y, test_ratio=0.2):
+    #Перетасовывает набор данных 
+    # и разбивает его на обучающие и тестовые наборы.
+    n_samples = len(X)
+
+    # Generate a list of shuffled indices
+    #Сгенерировать список перетасованных индексов
+    shuffled_indices = np.random.permutation(n_samples)
+
+    # Подсчитайте, сколько строк принадлежит тестовому набору
+    test_set_size = int(n_samples * test_ratio)
+
+    # Split the indices
+    test_indices = shuffled_indices[:test_set_size]
+    train_indices = shuffled_indices[test_set_size:]
+
+    return X[train_indices], X[test_indices], y[train_indices], y[test_indices]
+
+#Расчет метрик
+def calculate_metrics(y_true, y_pred):
+    #Вычисляет точность скрупулезность запоминания и F1-Балл с нуля
+
+    classes = np.unique(y_true)
+
+    macro_precision = 0.0
+    macro_recall = 0.0
+    macro_f1 = 0.0
+
+    #Accuracy is global (total correct)/(total samples)
+    accuracy = np.sum(y_true == y_pred) / len(y_true)
+    #For precision, recall and F1, we calculate per class (Macro-Average approach)
+    for c in classes:
+        #we predicated class C, and it is actually class C
+        #Мы указали класс С, и на самом деле это класс С
+
+        TP = np.sum((y_true == c) & (y_pred ==c ))
+
+        # False Positives (FP): We predicted class C, but it is NOT class C
+        FP = np.sum((y_true != c) & (y_pred == c))
+        
+        # False Negatives (FN): We did NOT predict class C, but it actually IS class C
+        FN = np.sum((y_true == c) & (y_pred != c))
+        
+        # Safe math to avoid dividing by zero
+        precision = TP / (TP + FP) if (TP + FP) > 0 else 0
+        recall = TP / (TP + FN) if (TP + FN) > 0 else 0
+        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+        
+        # Add to the macro sum
+        macro_precision += precision
+        macro_recall += recall
+        macro_f1 += f1
+        
+    # Calculate Macro-Averages (divide by the number of unique classes)
+    n_classes = len(classes)
+    
+    return {
+        'Accuracy': accuracy,
+        'Precision': macro_precision / n_classes,
+        'Recall': macro_recall / n_classes,
+        'F1-Score': macro_f1 / n_classes
+    }
+
+# --- Validation Initiation for Stage 5.1 (Real Data Test) ---
+print("\n--- INITIATING FINAL TEST ON KAGGLE DATA ---")
+
+# 1. Extract X (features) and y (target) from our processed Kaggle dataset
+# We drop the 'series_id' and 'surface' to keep only the math columns
+X_real = df_list.drop(columns=['series_id', 'surface']).values
+y_real = df_list['surface'].values
+
+# 2. Split into 80% Training and 20% Testing
+X_train, X_test, y_train, y_test = train_test_split_manual(X_real, y_real, test_ratio=0.2)
+
+print(f"Data ready. Training on {len(X_train)} series, Testing on {len(X_test)} series.")
+
+# 3. Initialize the Forest
+# For real data, we use more trees and more depth.
+print("Planting 15 trees...")
+real_forest = CustomRandomForest(n_trees=15, max_depth=6, num_bins=4)
+
+print("Training the Random Forest (This might take a minute depending on your CPU)...")
+real_forest.fit(X_train, y_train)
+
+print("Predicting on unseen test data...")
+y_test_pred = real_forest.predict(X_test)
+
+# 4. Calculate Final Metrics
+results = calculate_metrics(y_test, y_test_pred)
+
+print("\n--- 🏆 FINAL METRICS ON KAGGLE DATA 🏆 ---")
+print(f"Accuracy:  {results['Accuracy'] * 100:.2f}%")
+print(f"Precision: {results['Precision'] * 100:.2f}%")
+print(f"Recall:    {results['Recall'] * 100:.2f}%")
+print(f"F1-Score:  {results['F1-Score'] * 100:.2f}%")
+
+# Random guessing among 9 surfaces would give ~11% accuracy. 
+if results['Accuracy'] > 0.3: 
+    print("\n✅ SUCCESS: The model has successfully learned from the sensor data!")
+else:
+    print("\n❌ ERROR: The model is struggling to learn.")
